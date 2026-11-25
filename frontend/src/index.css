@@ -1,0 +1,14 @@
+@import 'tailwindcss';
+
+/* Base styles. Tailwind v4 is configured in CSS; no tailwind.config.js needed. */
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-zinc-950 text-zinc-100 antialiased;
+  }
+}
