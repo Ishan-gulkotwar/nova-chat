@@ -1,94 +1,137 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { streamChat, type ChatMessage } from '../lib/api.ts'
+import {
+  StreamError,
+  streamMessage,
+  type ConversationDetail,
+  type MessageStatus,
+  type Role,
+  type StoredMessage,
+} from '../lib/api.ts'
+import { queryKeys } from '../lib/queryKeys.ts'
 
-export type MessageStatus = 'streaming' | 'done' | 'stopped' | 'error'
-
-/** A message as the UI sees it: the wire format plus an id and a status. */
-export interface UiMessage extends ChatMessage {
+/** A message as the UI renders it. `streaming` exists only on the client. */
+export interface UiMessage {
   id: string
-  status: MessageStatus
-  error?: string
+  role: Role
+  content: string
+  status: MessageStatus | 'streaming'
+  error?: string | null
 }
 
-let nextId = 0
-const newId = () => `msg-${++nextId}`
+export function toUiMessage(message: StoredMessage): UiMessage {
+  return { ...message, id: String(message.id) }
+}
+
+let localId = 0
+const newLocalId = () => `local-${++localId}`
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
 }
 
 /**
- * Owns the conversation state and the streaming lifecycle.
+ * Streaming lifecycle for one conversation.
  *
- * Components stay simple: they render `messages`, call `send()` and `stop()`,
- * and disable inputs while `isStreaming` is true.
+ * The server is the source of truth for history (loaded with TanStack Query).
+ * This hook only holds the *in-flight* turn: the user's message plus the
+ * assistant reply being streamed. When the turn finishes, it's merged into the
+ * cached conversation, exactly as the server saved it.
  */
-export function useChat(model: string | undefined) {
-  const [messages, setMessages] = useState<UiMessage[]>([])
+export function useChat(conversationId: string | undefined) {
+  const queryClient = useQueryClient()
+  const [pending, setPending] = useState<UiMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
 
-  // Abort any in-flight request if the component unmounts.
+  // Abort any in-flight request if the user navigates away.
   useEffect(() => () => abortRef.current?.abort(), [])
 
-  const updateMessage = useCallback((id: string, patch: (m: UiMessage) => Partial<UiMessage>) => {
-    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch(m) } : m)))
-  }, [])
-
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, model: string) => {
       const content = text.trim()
-      if (!content || !model || isStreaming) return
+      if (!conversationId || !content || !model || abortRef.current) return
 
-      const userMessage: UiMessage = { id: newId(), role: 'user', content, status: 'done' }
-      const assistantId = newId()
-
-      // Send only completed turns as context; skip failed or empty replies.
-      const history: ChatMessage[] = [...messages, userMessage]
-        .filter((m) => m.status !== 'error' && m.content.length > 0)
-        .map(({ role, content }) => ({ role, content }))
-
-      setMessages((prev) => [
-        ...prev,
-        userMessage,
-        { id: assistantId, role: 'assistant', content: '', status: 'streaming' },
-      ])
+      const user: UiMessage = { id: newLocalId(), role: 'user', content, status: 'done' }
+      let reply: UiMessage = { id: newLocalId(), role: 'assistant', content: '', status: 'streaming' }
+      const show = () => setPending([user, reply])
+      show()
       setIsStreaming(true)
 
       const controller = new AbortController()
       abortRef.current = controller
+      // True once the server has saved the user's message (i.e. streaming began).
+      let saved = false
 
       try {
-        await streamChat(
-          { model, messages: history },
-          {
-            signal: controller.signal,
-            onToken: (token) => updateMessage(assistantId, (m) => ({ content: m.content + token })),
+        await streamMessage(conversationId, { content, model }, {
+          signal: controller.signal,
+          onToken: (token) => {
+            if (!saved) {
+              saved = true
+              // The server just saved the user's message and auto-title: refresh the sidebar.
+              void queryClient.invalidateQueries({ queryKey: queryKeys.conversations })
+            }
+            reply = { ...reply, content: reply.content + token }
+            show()
           },
-        )
-        updateMessage(assistantId, () => ({ status: 'done' }))
+        })
+        reply = { ...reply, status: 'done' }
+        saved = true
       } catch (error) {
         if (isAbortError(error)) {
-          updateMessage(assistantId, () => ({ status: 'stopped' }))
+          reply = { ...reply, status: 'stopped' }
+          saved = true
         } else {
           const message = error instanceof Error ? error.message : 'Something went wrong'
-          updateMessage(assistantId, () => ({ status: 'error', error: message }))
+          reply = { ...reply, status: 'error', error: message }
+          saved ||= error instanceof StreamError
         }
       } finally {
         abortRef.current = null
         setIsStreaming(false)
       }
+
+      if (!saved) {
+        // The request failed before the server stored anything: keep it on screen.
+        show()
+        return
+      }
+
+      // Merge the finished turn into the cached conversation, then drop the local copy.
+      const detailKey = queryKeys.conversation(conversationId)
+      queryClient.setQueryData<ConversationDetail>(detailKey, (old) =>
+        old ? { ...old, model, messages: [...old.messages, ...[user, reply].map(toStored)] } : old,
+      )
+      setPending([])
+      // Reload it from the server (e.g. to pick up the auto-generated title). The server
+      // saves before sending `done`/`error`, so that's safe right away. A stopped reply
+      // may still be saving, so then we only mark it stale and reload it next time.
+      void queryClient.invalidateQueries({
+        queryKey: detailKey,
+        refetchType: reply.status === 'stopped' ? 'none' : 'active',
+      })
+      // The sidebar's titles and order changed.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.conversations })
     },
-    [model, isStreaming, messages, updateMessage],
+    [conversationId, queryClient],
   )
 
   const stop = useCallback(() => abortRef.current?.abort(), [])
 
-  const reset = useCallback(() => {
-    abortRef.current?.abort()
-    setMessages([])
-  }, [])
+  return { pending, isStreaming, send, stop }
+}
 
-  return { messages, isStreaming, send, stop, reset }
+let tempId = -1
+function toStored(message: UiMessage): StoredMessage {
+  return {
+    id: tempId--, // placeholder until the next refetch brings the real id
+    role: message.role,
+    content: message.content,
+    model: null,
+    status: message.status === 'streaming' ? 'done' : message.status,
+    error: message.error ?? null,
+    created_at: new Date().toISOString(),
+  }
 }

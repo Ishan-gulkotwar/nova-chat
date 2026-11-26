@@ -1,6 +1,6 @@
 [project]
 name = "nova-chat-backend"
-version = "0.2.0"
+version = "0.3.0"
 description = "FastAPI backend for Nova Chat, a self-hosted AI chat app"
 requires-python = ">=3.11"
 dependencies = [
@@ -8,6 +8,9 @@ dependencies = [
     "uvicorn[standard]>=0.32",
     "pydantic-settings>=2.6",
     "httpx>=0.28",  # async HTTP client used to call LLM providers
+    "sqlmodel>=0.0.22",  # ORM: SQLAlchemy + Pydantic models in one class
+    "sqlalchemy[asyncio]>=2.0",  # async engine support (pulls in greenlet)
+    "aiosqlite>=0.20",  # async SQLite driver for local development
 ]
 
 [project.optional-dependencies]

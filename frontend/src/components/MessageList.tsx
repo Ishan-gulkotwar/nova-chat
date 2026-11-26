@@ -46,7 +46,7 @@ export function MessageList({ messages }: { messages: UiMessage[] }) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-zinc-500">
         <p className="text-2xl font-semibold text-zinc-300">How can I help?</p>
-        <p className="text-sm">Pick a model above and send a message.</p>
+        <p className="text-sm">Pick a model above and send a message. Your chats are saved on the left.</p>
       </div>
     )
   }

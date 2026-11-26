@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     # CORS_ORIGINS=["http://localhost:5173","https://nova-chat.vercel.app"]
     cors_origins: list[str] = ["http://localhost:5173"]
 
+    # --- Database --------------------------------------------------------------
+    # SQLAlchemy async URL. SQLite file for local dev; Postgres in Docker/production
+    # (Phase 8), e.g. postgresql+asyncpg://user:pass@host:5432/nova_chat
+    database_url: str = "sqlite+aiosqlite:///./nova_chat.db"
+    # Log every SQL statement (useful while learning, noisy otherwise).
+    database_echo: bool = False
+
     # --- LLM providers -------------------------------------------------------
     # Where the Ollama server listens. Inside Docker (Phase 8) this becomes
     # http://ollama:11434 or http://host.docker.internal:11434.

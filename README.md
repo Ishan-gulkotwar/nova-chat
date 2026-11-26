@@ -4,7 +4,7 @@ A self-hosted AI chat app: a ChatGPT-style interface for local models through
 [Ollama](https://ollama.com) and cloud models through OpenAI-compatible APIs and
 Anthropic's Claude API.
 
-> **Status:** early development (Phase 2 of 9: streaming chat with Ollama).
+> **Status:** early development (Phase 3 of 9: persistent chat history).
 
 ## Features (so far)
 
@@ -12,15 +12,19 @@ Anthropic's Claude API.
 - **Stop** button that cancels generation all the way through to the model
 - Markdown rendering with syntax-highlighted code blocks and a copy button
 - Model selector populated from the models installed in Ollama
+- **Saved chat history** (SQLite): a sidebar of past chats with new, rename, delete and search
+  (matches titles and message text); every chat has its own URL
+- Partial replies are saved too, when you press Stop or the model fails
+- **Per-chat system prompt** (e.g. "You are a concise Python tutor")
 
 ## Tech stack
 
 | Layer    | Tech                                                                 |
 | -------- | -------------------------------------------------------------------- |
-| Frontend | React 18, TypeScript, Vite, Tailwind CSS v4, TanStack Query, react-markdown |
-| Backend  | Python 3.11+, FastAPI, Pydantic Settings, httpx (async), SSE         |
+| Frontend | React 18, TypeScript, Vite, Tailwind CSS v4, TanStack Query, React Router, react-markdown |
+| Backend  | Python 3.11+, FastAPI, SQLModel (async SQLAlchemy), SQLite, httpx, SSE |
 | Testing  | pytest (backend), Vitest + Testing Library (frontend)                |
-| Planned  | SQLModel, Alembic, PostgreSQL + pgvector, SSE streaming, Docker, CI  |
+| Planned  | Alembic, PostgreSQL + pgvector, Docker, GitHub Actions CI            |
 
 ## Project structure
 
@@ -52,6 +56,9 @@ blocks the `.exe` launchers inside `.venv\Scripts`.
 
 API docs: http://localhost:8000/api/docs
 
+Chats are stored in `backend/nova_chat.db` (SQLite, created on first start). To start
+fresh, stop the backend and delete that file.
+
 ### 2. Frontend (second terminal)
 
 ```powershell
@@ -73,7 +80,7 @@ cd frontend; npm test
 
 - [x] Phase 1: Monorepo setup, FastAPI + React hello world
 - [x] Phase 2: Streaming chat with Ollama (SSE), Markdown rendering, model selector
-- [ ] Phase 3: Persistent chat history
+- [x] Phase 3: Persistent chat history
 - [ ] Phase 4: Multiple providers (Ollama, OpenAI-compatible, Anthropic), encrypted API keys
 - [ ] Phase 5: Authentication (JWT), per-user chats, admin role
 - [ ] Phase 6: RAG: chat with your documents
