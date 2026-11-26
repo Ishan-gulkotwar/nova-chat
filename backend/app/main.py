@@ -10,9 +10,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
-from app.api import chat, conversations, health
+from app.api import conversations, health, providers
 from app.config import Settings, get_settings
 from app.db import create_engine, create_sessionmaker, init_db
+from app.security import Encryptor
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -41,6 +42,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = engine
     app.state.sessionmaker = create_sessionmaker(engine)
+    app.state.encryptor = Encryptor(settings.secret_key.get_secret_value())
 
     app.add_middleware(
         CORSMiddleware,
@@ -52,7 +54,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Every route lives under /api so the frontend can proxy a single prefix.
     app.include_router(health.router, prefix="/api")
-    app.include_router(chat.router, prefix="/api")
+    app.include_router(providers.router, prefix="/api")
     app.include_router(conversations.router, prefix="/api")
 
     return app

@@ -23,10 +23,12 @@ from fastapi.responses import StreamingResponse
 from sqlmodel import col, delete, or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.api.chat import ProviderDep, sse_event
+from app.api.providers import RegistryDep
+from app.api.sse import sse_event
 from app.db import SessionDep, SessionMaker
 from app.models import DEFAULT_TITLE, Conversation, Message, MessageStatus, utcnow
 from app.providers import ChatMessage, ProviderError
+from app.providers.registry import UnknownProviderError
 from app.schemas import (
     ConversationCreate,
     ConversationDetail,
@@ -107,7 +109,10 @@ async def list_conversations(
 @router.post("", response_model=ConversationRead, status_code=status.HTTP_201_CREATED)
 async def create_conversation(body: ConversationCreate, session: SessionDep) -> Conversation:
     conversation = Conversation(
-        title=body.title or DEFAULT_TITLE, model=body.model, system_prompt=body.system_prompt
+        title=body.title or DEFAULT_TITLE,
+        model=body.model,
+        provider=body.provider,
+        system_prompt=body.system_prompt,
     )
     session.add(conversation)
     await session.commit()
@@ -157,6 +162,7 @@ async def save_reply(
     sessionmaker: SessionMaker,
     conversation_id: str,
     model: str,
+    provider: str,
     content: str,
     status_: MessageStatus,
     error: str | None,
@@ -167,6 +173,7 @@ async def save_reply(
             role="assistant",
             content=content,
             model=model,
+            provider=provider,
             status=status_,
             error=error,
         )
@@ -185,15 +192,24 @@ async def send_message(
     body: SendMessageRequest,
     request: Request,
     session: SessionDep,
-    provider: ProviderDep,
+    registry: RegistryDep,
 ) -> StreamingResponse:
     conversation = await get_conversation_or_404(session, conversation_id)
+    try:
+        # The model can change mid-conversation; each request names its provider.
+        provider = registry.get(body.provider).provider
+    except UnknownProviderError:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Provider '{body.provider}' isn't available. Check that it's enabled in Settings.",
+        ) from None
 
     # 1. Save the user's message right away, so it's never lost.
     session.add(Message(conversation_id=conversation_id, role="user", content=body.content))
     if conversation.title == DEFAULT_TITLE:
         conversation.title = title_from_message(body.content)
     conversation.model = body.model
+    conversation.provider = body.provider
     conversation.updated_at = utcnow()
     session.add(conversation)
     await session.commit()
@@ -227,7 +243,13 @@ async def send_message(
             # write to finish.
             with anyio.CancelScope(shield=True):
                 message_id = await save_reply(
-                    sessionmaker, conversation_id, body.model, "".join(parts), reply_status, error
+                    sessionmaker,
+                    conversation_id,
+                    body.model,
+                    body.provider,
+                    "".join(parts),
+                    reply_status,
+                    error,
                 )
         # The final event goes out only after the reply is saved, so a client
         # that reloads the conversation right away always sees it.

@@ -5,6 +5,7 @@
 export const queryKeys = {
   health: ['health'] as const,
   models: ['models'] as const,
+  providers: ['providers'] as const,
   conversations: ['conversations'] as const,
   conversationList: (q: string) => ['conversations', 'list', q] as const,
   conversation: (id: string) => ['conversation', id] as const,

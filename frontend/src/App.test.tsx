@@ -32,7 +32,7 @@ function renderApp(path = '/') {
 }
 
 const sidebar = () => screen.getByRole('navigation', { name: 'Chats' })
-const modelsLoaded = () => screen.findByRole('option', { name: 'llama3.2 · ollama' })
+const modelsLoaded = () => screen.findByRole('option', { name: 'llama3.2' })
 
 describe('App', () => {
   beforeEach(() => {
@@ -61,7 +61,7 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Hi there' })).toBeInTheDocument()
     const streams = backend.requests.filter((r) => r.path.endsWith('/messages/stream'))
     expect(streams).toHaveLength(1) // sent exactly once, even in StrictMode
-    expect(streams[0].body).toEqual({ content: 'Hi there', model: 'llama3.2:latest' })
+    expect(streams[0].body).toEqual({ content: 'Hi there', model: 'llama3.2:latest', provider: 'ollama' })
   })
 
   it('loads a saved chat from its URL', async () => {
@@ -159,8 +159,44 @@ describe('App', () => {
     await screen.findByText('world')
     expect(backend.requests.find((r) => r.method === 'POST' && r.path === '/api/conversations')?.body).toEqual({
       model: 'llama3.2:latest',
+      provider: 'ollama',
       system_prompt: 'Answer like a pirate.',
     })
+  })
+
+  it('switches models mid-chat and labels each reply with its model', async () => {
+    const id = backend.add('Compare')
+    const user = userEvent.setup()
+    renderApp(`/c/${id}`)
+    await modelsLoaded()
+
+    // The dropdown groups models by provider.
+    expect(screen.getByRole('group', { name: 'Groq' })).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Message'), 'First{Enter}')
+    await screen.findByText('world')
+    await user.selectOptions(screen.getByLabelText('Model'), 'groq1::llama-3.3-70b')
+    await user.type(screen.getByLabelText('Message'), 'Second{Enter}')
+
+    await waitFor(() => expect(screen.getAllByText('world')).toHaveLength(2))
+    const streams = backend.requests.filter((r) => r.path.endsWith('/messages/stream'))
+    expect(streams.map((r) => r.body)).toEqual([
+      { content: 'First', model: 'llama3.2:latest', provider: 'ollama' },
+      { content: 'Second', model: 'llama-3.3-70b', provider: 'groq1' },
+    ])
+    // Each reply is labelled with the model that wrote it.
+    expect(await screen.findByTitle('Answered by llama3.2:latest')).toHaveTextContent('llama3.2')
+    expect(screen.getByTitle('Answered by llama-3.3-70b')).toBeInTheDocument()
+  })
+
+  it('warns about a provider that is down but keeps the others usable', async () => {
+    backend.modelsResponse.errors = [
+      { provider: 'ollama', provider_name: 'Ollama', message: 'Could not connect to Ollama. Is Ollama running?' },
+    ]
+    renderApp('/')
+
+    expect(await screen.findByText(/Is Ollama running\?/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Message')).toBeEnabled()
   })
 
   it('shows a friendly page for a chat that does not exist', async () => {

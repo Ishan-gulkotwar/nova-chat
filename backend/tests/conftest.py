@@ -7,10 +7,11 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.chat import get_provider
+from app.api.providers import get_registry
 from app.config import Settings
 from app.main import create_app
 from app.providers import ChatMessage, LLMProvider, ModelInfo, ProviderError
+from app.providers.registry import ProviderRegistry, RegisteredProvider
 
 
 class FakeProvider(LLMProvider):
@@ -39,15 +40,21 @@ class FakeProvider(LLMProvider):
 @pytest.fixture
 def app(tmp_path: Path) -> FastAPI:
     """A fresh app with its own throwaway SQLite database for each test."""
-    settings = Settings(environment="test", database_url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}")
+    settings = Settings(
+        environment="test",
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}",
+        secret_key="test-secret-key-that-is-long-enough-123",  # type: ignore[arg-type]
+        ollama_enabled=False,  # never call a real Ollama from tests
+    )
     return create_app(settings)
 
 
 @pytest.fixture
 def provider(app: FastAPI) -> FakeProvider:
-    """The fake LLM, swapped in via FastAPI's dependency overrides."""
+    """A fake LLM registered as provider "fake", swapped in via dependency overrides."""
     fake = FakeProvider()
-    app.dependency_overrides[get_provider] = lambda: fake
+    registry = ProviderRegistry([RegisteredProvider(id="fake", name="Fake", kind="fake", provider=fake)])
+    app.dependency_overrides[get_registry] = lambda: registry
     return fake
 
 

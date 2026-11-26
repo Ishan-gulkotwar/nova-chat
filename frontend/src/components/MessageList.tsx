@@ -25,6 +25,11 @@ function MessageBubble({ message }: { message: UiMessage }) {
         </span>
       )}
       {message.status === 'stopped' && <p className="text-xs text-zinc-500">Stopped</p>}
+      {message.model && message.status !== 'streaming' && (
+        <p className="text-xs text-zinc-600" title={`Answered by ${message.model}`}>
+          {message.model.replace(/:latest$/, '')}
+        </p>
+      )}
       {message.status === 'error' && (
         <p role="alert" className="rounded-lg border border-red-900 bg-red-950/50 px-3 py-2 text-sm text-red-300">
           {message.error}

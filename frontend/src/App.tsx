@@ -2,6 +2,7 @@ import { Route, Routes, useParams } from 'react-router'
 
 import { Sidebar } from './components/Sidebar.tsx'
 import { ChatPage } from './pages/ChatPage.tsx'
+import { SettingsPage } from './pages/SettingsPage.tsx'
 
 /**
  * Re-mount the chat page whenever the URL's chat id changes, so no state
@@ -19,6 +20,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<ChatPage key="new" />} />
         <Route path="/c/:conversationId" element={<ConversationRoute />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<ChatPage key="new" />} />
       </Routes>
     </div>

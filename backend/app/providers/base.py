@@ -17,11 +17,16 @@ class ChatMessage(BaseModel):
 
 
 class ModelInfo(BaseModel):
-    """A model the user can pick in the UI."""
+    """A model the user can pick in the UI.
 
-    id: str  # the identifier sent back when chatting, e.g. "llama3.2:latest"
+    A model is identified by the pair (provider, id): two providers can offer
+    models with the same id, e.g. "llama-3.3-70b" on Groq and on OpenRouter.
+    """
+
+    id: str  # the provider's own model identifier, e.g. "llama3.2:latest"
     name: str  # human-friendly label
-    provider: str  # which adapter serves it, e.g. "ollama"
+    provider: str  # id of the configured provider that serves it, e.g. "ollama"
+    provider_name: str = ""  # display name of that provider, e.g. "Groq"
     size_bytes: int | None = None
 
 

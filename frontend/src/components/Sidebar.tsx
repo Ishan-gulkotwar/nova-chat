@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Link, useMatch, useNavigate } from 'react-router'
+import { Link, NavLink, useMatch, useNavigate } from 'react-router'
 
 import { useDebouncedValue } from '../hooks/useDebouncedValue.ts'
 import { api } from '../lib/api.ts'
@@ -93,6 +93,17 @@ export function Sidebar() {
           ))}
         </ul>
       </nav>
+
+      <div className="border-t border-zinc-800 p-3">
+        <NavLink
+          to="/settings"
+          className={({ isActive }) =>
+            `block rounded-md px-3 py-2 text-sm ${isActive ? 'bg-zinc-800 text-white' : 'text-zinc-300 hover:bg-zinc-800/60'}`
+          }
+        >
+          ⚙ Settings
+        </NavLink>
+      </div>
     </aside>
   )
 }

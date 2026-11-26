@@ -5,6 +5,7 @@ import {
   StreamError,
   streamMessage,
   type ConversationDetail,
+  type ModelChoice,
   type MessageStatus,
   type Role,
   type StoredMessage,
@@ -18,6 +19,9 @@ export interface UiMessage {
   content: string
   status: MessageStatus | 'streaming'
   error?: string | null
+  /** Which model wrote an assistant message (shown under it). */
+  model?: string | null
+  provider?: string | null
 }
 
 export function toUiMessage(message: StoredMessage): UiMessage {
@@ -49,12 +53,18 @@ export function useChat(conversationId: string | undefined) {
   useEffect(() => () => abortRef.current?.abort(), [])
 
   const send = useCallback(
-    async (text: string, model: string) => {
+    async (text: string, choice: ModelChoice) => {
       const content = text.trim()
-      if (!conversationId || !content || !model || abortRef.current) return
+      if (!conversationId || !content || !choice.model || abortRef.current) return
 
       const user: UiMessage = { id: newLocalId(), role: 'user', content, status: 'done' }
-      let reply: UiMessage = { id: newLocalId(), role: 'assistant', content: '', status: 'streaming' }
+      let reply: UiMessage = {
+        id: newLocalId(),
+        role: 'assistant',
+        content: '',
+        status: 'streaming',
+        ...choice,
+      }
       const show = () => setPending([user, reply])
       show()
       setIsStreaming(true)
@@ -65,7 +75,7 @@ export function useChat(conversationId: string | undefined) {
       let saved = false
 
       try {
-        await streamMessage(conversationId, { content, model }, {
+        await streamMessage(conversationId, { content, ...choice }, {
           signal: controller.signal,
           onToken: (token) => {
             if (!saved) {
@@ -102,7 +112,7 @@ export function useChat(conversationId: string | undefined) {
       // Merge the finished turn into the cached conversation, then drop the local copy.
       const detailKey = queryKeys.conversation(conversationId)
       queryClient.setQueryData<ConversationDetail>(detailKey, (old) =>
-        old ? { ...old, model, messages: [...old.messages, ...[user, reply].map(toStored)] } : old,
+        old ? { ...old, ...choice, messages: [...old.messages, ...[user, reply].map(toStored)] } : old,
       )
       setPending([])
       // Reload it from the server (e.g. to pick up the auto-generated title). The server
@@ -129,7 +139,8 @@ function toStored(message: UiMessage): StoredMessage {
     id: tempId--, // placeholder until the next refetch brings the real id
     role: message.role,
     content: message.content,
-    model: null,
+    model: message.model ?? null,
+    provider: message.provider ?? null,
     status: message.status === 'streaming' ? 'done' : message.status,
     error: message.error ?? null,
     created_at: new Date().toISOString(),

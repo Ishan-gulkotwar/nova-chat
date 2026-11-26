@@ -1,8 +1,8 @@
 """LLM provider adapters.
 
-Each provider (Ollama now; OpenAI-compatible and Anthropic in Phase 4) implements
-the same `LLMProvider` interface, so the API layer never needs to know which
-vendor it is talking to.
+Each provider (Ollama, any OpenAI-compatible API, Anthropic) implements the same
+`LLMProvider` interface, so the API layer never needs to know which vendor it
+is talking to. `registry.py` decides which providers are available.
 """
 
 from app.providers.base import ChatMessage, LLMProvider, ModelInfo, ProviderError

@@ -66,11 +66,55 @@ export interface HealthResponse {
   version: string
 }
 
+/** A model is identified by (provider, id): the same id can exist on two providers. */
 export interface ModelInfo {
   id: string
   name: string
   provider: string
+  provider_name: string
   size_bytes: number | null
+}
+
+export interface ModelsResponse {
+  models: ModelInfo[]
+  /** Providers that couldn't list their models (e.g. Ollama not running, bad API key). */
+  errors: { provider: string; provider_name: string; message: string }[]
+}
+
+/** Which model to use, and through which configured provider. */
+export interface ModelChoice {
+  provider: string
+  model: string
+}
+
+export type ProviderKind = 'ollama' | 'openai' | 'anthropic'
+
+/** A configured provider. The API never returns the key itself, only a hint like "…9f2c". */
+export interface Provider {
+  id: string
+  kind: ProviderKind
+  name: string
+  base_url: string
+  enabled: boolean
+  has_api_key: boolean
+  api_key_hint: string | null
+  builtin: boolean
+}
+
+export interface ProviderCreate {
+  kind: Exclude<ProviderKind, 'ollama'>
+  name: string
+  base_url: string
+  api_key?: string
+}
+
+/** Send `api_key: ''` to remove the saved key. */
+export type ProviderUpdate = Partial<Pick<Provider, 'name' | 'base_url' | 'enabled'>> & { api_key?: string }
+
+export interface ProviderTestResult {
+  ok: boolean
+  model_count: number
+  error: string | null
 }
 
 export type Role = 'system' | 'user' | 'assistant'
@@ -80,6 +124,7 @@ export interface Conversation {
   id: string
   title: string
   model: string | null
+  provider: string | null
   system_prompt: string
   created_at: string
   updated_at: string
@@ -90,6 +135,7 @@ export interface StoredMessage {
   role: Role
   content: string
   model: string | null
+  provider: string | null
   status: MessageStatus
   error: string | null
   created_at: string
@@ -102,16 +148,27 @@ export interface ConversationDetail extends Conversation {
 export interface ConversationCreate {
   title?: string
   model?: string
+  provider?: string
   system_prompt?: string
 }
 
-export type ConversationUpdate = Partial<Pick<Conversation, 'title' | 'model' | 'system_prompt'>>
+export type ConversationUpdate = Partial<Pick<Conversation, 'title' | 'model' | 'provider' | 'system_prompt'>>
 
 // ---- Endpoints ----
 
 export const api = {
   health: () => request<HealthResponse>('/api/health'),
-  models: () => request<ModelInfo[]>('/api/models'),
+  models: () => request<ModelsResponse>('/api/models'),
+
+  providers: {
+    list: () => request<Provider[]>('/api/providers'),
+    create: (body: ProviderCreate) =>
+      request<Provider>('/api/providers', { method: 'POST', body: JSON.stringify(body) }),
+    update: (id: string, body: ProviderUpdate) =>
+      request<Provider>(`/api/providers/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    remove: (id: string) => request<void>(`/api/providers/${id}`, { method: 'DELETE' }),
+    test: (id: string) => request<ProviderTestResult>(`/api/providers/${id}/test`, { method: 'POST' }),
+  },
 
   conversations: {
     list: (q?: string) =>
@@ -135,7 +192,7 @@ export const api = {
  */
 export async function streamMessage(
   conversationId: string,
-  body: { content: string; model: string },
+  body: { content: string } & ModelChoice,
   { onToken, signal }: { onToken: (text: string) => void; signal?: AbortSignal },
 ): Promise<void> {
   // EventSource only supports GET, so we POST with fetch and parse the SSE stream ourselves.

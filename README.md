@@ -1,10 +1,10 @@
 # Nova Chat
 
 A self-hosted AI chat app: a ChatGPT-style interface for local models through
-[Ollama](https://ollama.com) and cloud models through OpenAI-compatible APIs and
-Anthropic's Claude API.
+[Ollama](https://ollama.com) and cloud models through OpenAI-compatible APIs (Groq, OpenAI,
+OpenRouter, ...) and Anthropic's Claude API.
 
-> **Status:** early development (Phase 3 of 9: persistent chat history).
+> **Status:** early development (Phase 4 of 9: multiple model providers).
 
 ## Features (so far)
 
@@ -16,13 +16,17 @@ Anthropic's Claude API.
   (matches titles and message text); every chat has its own URL
 - Partial replies are saved too, when you press Stop or the model fails
 - **Per-chat system prompt** (e.g. "You are a concise Python tutor")
+- **Multiple providers**: Ollama plus any OpenAI-compatible API (Groq, OpenAI, OpenRouter, LM Studio...)
+  and Anthropic Claude, all in one model picker; **switch models mid-conversation**
+- **Settings page** to add, test, enable/disable and remove providers; API keys are **encrypted at
+  rest** (Fernet, key derived from `SECRET_KEY`) and never sent back to the browser
 
 ## Tech stack
 
 | Layer    | Tech                                                                 |
 | -------- | -------------------------------------------------------------------- |
 | Frontend | React 18, TypeScript, Vite, Tailwind CSS v4, TanStack Query, React Router, react-markdown |
-| Backend  | Python 3.11+, FastAPI, SQLModel (async SQLAlchemy), SQLite, httpx, SSE |
+| Backend  | Python 3.11+, FastAPI, SQLModel (async SQLAlchemy), SQLite, httpx, SSE, cryptography (Fernet) |
 | Testing  | pytest (backend), Vitest + Testing Library (frontend)                |
 | Planned  | Alembic, PostgreSQL + pgvector, Docker, GitHub Actions CI            |
 
@@ -59,6 +63,15 @@ API docs: http://localhost:8000/api/docs
 Chats are stored in `backend/nova_chat.db` (SQLite, created on first start). To start
 fresh, stop the backend and delete that file.
 
+Set `SECRET_KEY` in `backend/.env` to a random value (it encrypts saved API keys):
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Then add cloud providers (e.g. a free [Groq](https://console.groq.com/keys) key) under
+**Settings** in the app.
+
 ### 2. Frontend (second terminal)
 
 ```powershell
@@ -81,7 +94,7 @@ cd frontend; npm test
 - [x] Phase 1: Monorepo setup, FastAPI + React hello world
 - [x] Phase 2: Streaming chat with Ollama (SSE), Markdown rendering, model selector
 - [x] Phase 3: Persistent chat history
-- [ ] Phase 4: Multiple providers (Ollama, OpenAI-compatible, Anthropic), encrypted API keys
+- [x] Phase 4: Multiple providers (Ollama, OpenAI-compatible, Anthropic), encrypted API keys
 - [ ] Phase 5: Authentication (JWT), per-user chats, admin role
 - [ ] Phase 6: RAG: chat with your documents
 - [ ] Phase 7: Tool calling (calculator, time, web reader, web search)

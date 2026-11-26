@@ -7,13 +7,13 @@ import { MessageList } from '../components/MessageList.tsx'
 import { ModelSelector } from '../components/ModelSelector.tsx'
 import { SystemPromptEditor } from '../components/SystemPromptEditor.tsx'
 import { toUiMessage, useChat } from '../hooks/useChat.ts'
-import { ApiError, api, type ConversationDetail } from '../lib/api.ts'
+import { ApiError, api, type ConversationDetail, type ModelChoice } from '../lib/api.ts'
 import { queryKeys } from '../lib/queryKeys.ts'
 
 /** Handed from the "new chat" page to the freshly created chat via router state. */
 interface HandoffState {
   pendingMessage: string
-  model: string
+  choice: ModelChoice
 }
 
 /**
@@ -37,11 +37,18 @@ export function ChatPage() {
     retry: false,
   })
 
-  // Model: the user's pick, else the one this chat last used (if still installed), else the first.
-  const [pickedModel, setPickedModel] = useState<string>()
-  const installed = models.data ?? []
-  const savedModel = installed.some((m) => m.id === detail.data?.model) ? detail.data?.model : undefined
-  const model = pickedModel ?? savedModel ?? installed[0]?.id
+  // Model: the user's pick, else the one this chat last used (if still available), else the first.
+  // It can be changed at any point; each message records which model answered it.
+  const [picked, setPicked] = useState<ModelChoice>()
+  const available = models.data?.models ?? []
+  const isAvailable = (c: { provider?: string | null; model?: string | null }) =>
+    available.some((m) => m.provider === c.provider && m.id === c.model)
+  const saved =
+    detail.data?.model && detail.data.provider && isAvailable(detail.data)
+      ? { provider: detail.data.provider, model: detail.data.model }
+      : undefined
+  const first = available[0] ? { provider: available[0].provider, model: available[0].id } : undefined
+  const choice = picked ?? saved ?? first
 
   // System prompt: stored on the conversation, or held locally until a new chat is created.
   const [draftSystemPrompt, setDraftSystemPrompt] = useState('')
@@ -69,23 +76,23 @@ export function ChatPage() {
     if (!conversationId || !handoff?.pendingMessage) return
     const timer = setTimeout(() => {
       navigate(location.pathname, { replace: true, state: null }) // don't resend on refresh
-      void send(handoff.pendingMessage, handoff.model)
+      void send(handoff.pendingMessage, handoff.choice)
     }, 0)
     return () => clearTimeout(timer)
   }, [conversationId, location.state, location.pathname, navigate, send])
 
   async function handleSend(text: string) {
-    if (!model) return
+    if (!choice) return
     if (conversationId) {
-      void send(text, model)
+      void send(text, choice)
       return
     }
-    const created = await createConversation.mutateAsync({ model, system_prompt: draftSystemPrompt })
+    const created = await createConversation.mutateAsync({ ...choice, system_prompt: draftSystemPrompt })
     queryClient.setQueryData<ConversationDetail>(queryKeys.conversation(created.id), {
       ...created,
       messages: [],
     })
-    const handoff: HandoffState = { pendingMessage: text, model }
+    const handoff: HandoffState = { pendingMessage: text, choice }
     navigate(`/c/${created.id}`, { state: handoff })
   }
 
@@ -110,6 +117,8 @@ export function ChatPage() {
 
   const messages = [...(detail.data?.messages.map(toUiMessage) ?? []), ...pending]
   const errorBanner = models.error?.message ?? createConversation.error?.message
+  // Some providers failed to list models (e.g. Ollama isn't running): warn, but keep the rest usable.
+  const providerWarnings = models.data?.errors ?? []
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
@@ -125,7 +134,7 @@ export function ChatPage() {
             System prompt
             {systemPrompt && <span aria-label="(set)" className="h-1.5 w-1.5 rounded-full bg-indigo-400" />}
           </button>
-          <ModelSelector models={installed} value={model} onChange={setPickedModel} disabled={isStreaming} />
+          <ModelSelector models={available} value={choice} onChange={setPicked} disabled={isStreaming} />
         </div>
       </header>
 
@@ -144,6 +153,22 @@ export function ChatPage() {
         </div>
       )}
 
+      {providerWarnings.length > 0 && (
+        <div className="border-b border-amber-900/60 bg-amber-950/40 px-4 py-2 text-sm text-amber-200">
+          {providerWarnings.map((w) => (
+            <p key={w.provider}>
+              <span className="font-medium">{w.provider_name}:</span> {w.message}{' '}
+              <Link to="/settings" className="underline">
+                Settings
+              </Link>
+            </p>
+          ))}
+          {available.length === 0 && (
+            <p className="mt-1 text-amber-300">No models available. Start Ollama or add a provider in Settings.</p>
+          )}
+        </div>
+      )}
+
       <main className="flex-1 overflow-y-auto">
         {conversationId && detail.isPending ? (
           <p className="p-6 text-center text-sm text-zinc-500">Loading…</p>
@@ -157,7 +182,7 @@ export function ChatPage() {
           onSend={handleSend}
           onStop={stop}
           isStreaming={isStreaming || createConversation.isPending}
-          disabled={!model}
+          disabled={!choice}
         />
       </footer>
     </div>
