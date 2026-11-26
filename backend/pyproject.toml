@@ -1,18 +1,19 @@
 [project]
 name = "nova-chat-backend"
-version = "0.1.0"
+version = "0.2.0"
 description = "FastAPI backend for Nova Chat, a self-hosted AI chat app"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "pydantic-settings>=2.6",
+    "httpx>=0.28",  # async HTTP client used to call LLM providers
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3",
-    "httpx>=0.28",  # required by FastAPI's TestClient
+    "pytest-asyncio>=0.24",  # lets tests be `async def`
 ]
 
 [build-system]
@@ -25,6 +26,8 @@ include = ["app*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 filterwarnings = [
     # Starlette nudges toward a newer HTTP client for TestClient; httpx works fine.
     "ignore:Using `httpx` with `starlette.testclient`:UserWarning",

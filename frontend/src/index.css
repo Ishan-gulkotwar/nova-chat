@@ -1,4 +1,8 @@
 @import 'tailwindcss';
+/* Prose styles for rendered Markdown (headings, lists, tables, code). */
+@plugin '@tailwindcss/typography';
+/* Syntax-highlighting colors for code blocks (classes added by rehype-highlight). */
+@import 'highlight.js/styles/github-dark.css';
 
 /* Base styles. Tailwind v4 is configured in CSS; no tailwind.config.js needed. */
 @layer base {

@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     # CORS_ORIGINS=["http://localhost:5173","https://nova-chat.vercel.app"]
     cors_origins: list[str] = ["http://localhost:5173"]
 
+    # --- LLM providers -------------------------------------------------------
+    # Where the Ollama server listens. Inside Docker (Phase 8) this becomes
+    # http://ollama:11434 or http://host.docker.internal:11434.
+    ollama_base_url: str = "http://localhost:11434"
+    # Seconds to wait for the model to produce the next chunk. Generous because
+    # a local model's first token can be slow while it loads into memory.
+    llm_timeout_seconds: float = 120.0
+
 
 @lru_cache
 def get_settings() -> Settings:

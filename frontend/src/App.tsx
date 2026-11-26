@@ -1,76 +1,62 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState, type FormEvent } from 'react'
+import { useState } from 'react'
 
+import { Composer } from './components/Composer.tsx'
+import { MessageList } from './components/MessageList.tsx'
+import { ModelSelector } from './components/ModelSelector.tsx'
+import { useChat } from './hooks/useChat.ts'
 import { api } from './lib/api.ts'
 
-/**
- * Phase 1 landing page: proves the React app can reach the FastAPI backend.
- * Replaced by the chat UI in Phase 2.
- */
 export default function App() {
-  const [draft, setDraft] = useState('')
-  const [name, setName] = useState('world')
-
   const health = useQuery({ queryKey: ['health'], queryFn: api.health, retry: false })
-  const hello = useQuery({
-    queryKey: ['hello', name],
-    queryFn: () => api.hello(name),
-    enabled: health.isSuccess, // don't call /hello until we know the backend is up
-  })
+  const models = useQuery({ queryKey: ['models'], queryFn: api.models, retry: false })
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const trimmed = draft.trim()
-    if (trimmed) setName(trimmed)
-  }
+  // The user's pick, or the first available model until they choose one.
+  const [pickedModel, setPickedModel] = useState<string>()
+  const model = pickedModel ?? models.data?.[0]?.id
+
+  const { messages, isStreaming, send, stop, reset } = useChat(model)
 
   return (
-    <main className="flex min-h-full items-center justify-center p-6">
-      <div className="w-full max-w-md space-y-6 rounded-2xl border border-zinc-800 bg-zinc-900 p-8 shadow-xl">
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Nova Chat</h1>
-          <p className="text-sm text-zinc-400">A self-hosted AI chat app. Phase 1: hello world.</p>
-        </header>
-
-        <section aria-label="Backend status" className="flex items-center gap-2 text-sm">
-          <span
-            aria-hidden="true"
-            className={`h-2.5 w-2.5 rounded-full ${
-              health.isSuccess ? 'bg-emerald-500' : health.isError ? 'bg-red-500' : 'bg-zinc-500'
-            }`}
-          />
-          {health.isPending && <span>Checking backend…</span>}
-          {health.isSuccess && <span>Backend connected (v{health.data.version})</span>}
-          {health.isError && <span className="text-red-400">Backend unreachable</span>}
-        </section>
-
-        <form onSubmit={handleSubmit} className="flex gap-2">
-          <label htmlFor="name" className="sr-only">
-            Your name
-          </label>
-          <input
-            id="name"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="Your name"
-            maxLength={50}
-            className="flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-indigo-500"
+    <div className="flex h-full flex-col">
+      <header className="flex items-center gap-3 border-b border-zinc-800 px-4 py-3">
+        <h1 className="text-lg font-semibold tracking-tight">Nova Chat</h1>
+        <span
+          title={health.isSuccess ? `Backend v${health.data.version}` : 'Backend unreachable'}
+          aria-label={health.isSuccess ? 'Backend connected' : 'Backend unreachable'}
+          className={`h-2 w-2 rounded-full ${health.isSuccess ? 'bg-emerald-500' : health.isError ? 'bg-red-500' : 'bg-zinc-500'}`}
+        />
+        <div className="ml-auto flex items-center gap-2">
+          <ModelSelector
+            models={models.data ?? []}
+            value={model}
+            onChange={setPickedModel}
+            disabled={isStreaming}
           />
           <button
-            type="submit"
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium hover:bg-indigo-500 disabled:opacity-50"
-            disabled={!health.isSuccess}
+            type="button"
+            onClick={reset}
+            disabled={messages.length === 0}
+            className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800 disabled:opacity-40"
           >
-            Say hi
+            New chat
           </button>
-        </form>
+        </div>
+      </header>
 
-        {hello.data && (
-          <p role="status" className="rounded-lg bg-zinc-800 px-4 py-3 text-sm">
-            {hello.data.message}
-          </p>
-        )}
-      </div>
-    </main>
+      {models.isError && (
+        <div role="alert" className="border-b border-red-900 bg-red-950/50 px-4 py-2 text-sm text-red-300">
+          {models.error.message}
+        </div>
+      )}
+
+      <main className="flex-1 overflow-y-auto">
+        <MessageList messages={messages} />
+      </main>
+
+      <footer className="pt-2">
+        <Composer onSend={send} onStop={stop} isStreaming={isStreaming} disabled={!model} />
+      </footer>
+    </div>
   )
 }
